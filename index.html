@@ -1,0 +1,170 @@
+<section id="radar-viewer" style="margin-top: 2rem;">
+  <!-- Controls: Radar Selector and Layer Toggles -->
+  <div id="controls" style="position: relative; z-index: 1000; margin-bottom: 10px; text-align: center;">
+    <label for="radarSelect">Select Radar Site:</label>
+    <select id="radarSelect" style="padding: 4px 8px; font-size: 14px;"></select>
+    <br><br>
+
+    <!-- Layer Toggles -->
+    <label for="toggleRadar">Show Radar:</label>
+    <input type="checkbox" id="toggleRadar" checked><br>
+    <label for="toggleWarnings">Show Warnings:</label>
+    <input type="checkbox" id="toggleWarnings" checked><br>
+    <label for="toggleLightning">Show Lightning:</label>
+    <input type="checkbox" id="toggleLightning" checked><br>
+
+    <br>
+    <!-- Play/Pause Controls -->
+    <button id="playPause" onclick="togglePlayback()">Play</button>
+    <button onclick="prevFrame()">Previous</button>
+    <button onclick="nextFrame()">Next</button>
+  </div>
+
+  <div id="radarMap" style="height: 600px; width: 100%;"></div>
+
+  <!-- Leaflet JS & Esri for Layers -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/esri-leaflet"></script>
+
+  <script>
+    const texasRadars = {
+      'KAMA': { name: 'Amarillo', coords: [35.233, -101.709] },
+      'KEWX': { name: 'Austin/San Antonio', coords: [29.704, -98.021] },
+      'KCRP': { name: 'Corpus Christi', coords: [27.783, -97.511] },
+      'KDYX': { name: 'Dyess AFB (Abilene)', coords: [32.538, -99.254] },
+      'KFWS': { name: 'Dallas/Fort Worth', coords: [32.572, -97.303] },
+      'KGRK': { name: 'Fort Cavazos/Killeen', coords: [30.719, -97.383] },
+      'KHGX': { name: 'Houston/Galveston', coords: [29.471, -95.078] },
+      'KLBB': { name: 'Lubbock', coords: [33.654, -101.814] },
+      'KMAF': { name: 'Midland/Odessa', coords: [31.943, -102.188] },
+      'KSJT': { name: 'San Angelo', coords: [31.373, -100.492] },
+      'KEPZ': { name: 'El Paso (Far West TX)', coords: [31.873, -106.699] }
+    };
+
+    let currentRadarSite = 'KHGX'; // Default site
+    let radarLayer;
+    let lightningLayer;
+    let warningsLayer;
+
+    // Initialize the map
+    const map = L.map('radarMap').setView(texasRadars[currentRadarSite].coords, 7);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Add radar layers
+    function addRadarLayer(siteCode) {
+      return L.tileLayer(`https://radar.weather.gov/ridge/standard/${siteCode}_L3_N0Q/{z}/{x}/{y}.png`, {
+        opacity: 0.6,
+        attribution: 'Radar: NOAA/NWS',
+        zIndex: 500
+      }).addTo(map);
+    }
+
+    // Add warning layers (NOAA WMS)
+    function addWarningsLayer() {
+      return L.tileLayer.wms('https://nowcoast.noaa.gov/geoserver/wwa/wms', {
+        layers: 'wwa:WarningAreas',
+        format: 'image/png',
+        transparent: true,
+        attribution: 'Warnings: NOAA/NWS',
+        zIndex: 600
+      }).addTo(map);
+    }
+
+    // Add lightning layer (RainViewer)
+    function addLightningLayer() {
+      return L.tileLayer('https://tilecache.rainviewer.com/v2/lightning/{z}/{x}/{y}.png', {
+        attribution: 'Lightning: RainViewer',
+        transparent: true,
+        opacity: 0.7,
+        zIndex: 700
+      }).addTo(map);
+    }
+
+    // Initialize dropdown
+    const radarSelect = document.getElementById('radarSelect');
+    for (const code in texasRadars) {
+      const option = document.createElement('option');
+      option.value = code;
+      option.textContent = `${code} - ${texasRadars[code].name}`;
+      radarSelect.appendChild(option);
+    }
+
+    // Update map and layers on radar change
+    radarSelect.addEventListener('change', function () {
+      const code = this.value;
+      currentRadarSite = code;
+      map.setView(texasRadars[code].coords, 7);
+      if (radarLayer) map.removeLayer(radarLayer);
+      radarLayer = addRadarLayer(code);
+    });
+
+    // Layer toggle functionality
+    document.getElementById('toggleRadar').addEventListener('change', function() {
+      if (this.checked) {
+        radarLayer.addTo(map);
+      } else {
+        map.removeLayer(radarLayer);
+      }
+    });
+
+    document.getElementById('toggleWarnings').addEventListener('change', function() {
+      if (this.checked) {
+        warningsLayer = addWarningsLayer();
+      } else {
+        map.removeLayer(warningsLayer);
+      }
+    });
+
+    document.getElementById('toggleLightning').addEventListener('change', function() {
+      if (this.checked) {
+        lightningLayer = addLightningLayer();
+      } else {
+        map.removeLayer(lightningLayer);
+      }
+    });
+
+    // Initialize layers
+    radarLayer = addRadarLayer(currentRadarSite);
+    warningsLayer = addWarningsLayer();
+    lightningLayer = addLightningLayer();
+
+    // Playback controls (for animation)
+    let playbackTimer;
+    let currentFrame = 0;
+    const totalFrames = 5; // For simplicity, we're cycling through 5 frames
+    const frameInterval = 10000; // Update every 10 seconds
+
+    function togglePlayback() {
+      const playPauseButton = document.getElementById('playPause');
+      if (playPauseButton.textContent === 'Play') {
+        playPauseButton.textContent = 'Pause';
+        playbackTimer = setInterval(() => {
+          currentFrame = (currentFrame + 1) % totalFrames;
+          loadFrame(currentFrame);
+        }, frameInterval);
+      } else {
+        playPauseButton.textContent = 'Play';
+        clearInterval(playbackTimer);
+      }
+    }
+
+    function loadFrame(frame) {
+      const radarUrl = `https://radar.weather.gov/ridge/standard/${currentRadarSite}_L3_N0Q/${frame}/{z}/{x}/{y}.png`;
+      radarLayer.setUrl(radarUrl); // Update radar tile URL for animation
+    }
+
+    // Navigate frames manually
+    function prevFrame() {
+      currentFrame = (currentFrame - 1 + totalFrames) % totalFrames;
+      loadFrame(currentFrame);
+    }
+
+    function nextFrame() {
+      currentFrame = (currentFrame + 1) % totalFrames;
+      loadFrame(currentFrame);
+    }
+  </script>
+</section>
