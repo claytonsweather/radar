@@ -1,193 +1,89 @@
-<section id="radar-viewer" style="margin-top: 2rem; font-family: 'Arial', sans-serif;">
-
-  <!-- Header -->
-  <div style="text-align: center; margin-bottom: 20px;">
-    <h2>Live NOAA Radar Viewer</h2>
-    <p style="font-size: 18px; color: #555;">Select a radar site to view live radar imagery, warnings, and lightning strikes</p>
-  </div>
-
-  <!-- Search Bar -->
-  <div style="text-align: center; margin-bottom: 15px;">
-    <input type="text" id="searchInput" placeholder="Search U.S. Radar..." style="padding: 10px 15px; width: 80%; font-size: 16px; border-radius: 5px; border: 1px solid #ccc;">
-  </div>
-
-  <!-- Controls: Radar Site Selector and Layer Toggles -->
-  <div id="controls" style="text-align: center; margin-bottom: 20px;">
-    <label for="radarSelect" style="font-size: 18px;">Select Radar Site:</label><br>
-    <select id="radarSelect" style="padding: 8px 16px; font-size: 16px; margin-top: 10px; border-radius: 5px; border: 1px solid #ccc;"></select>
-    <br><br>
-
-    <!-- Layer Toggles -->
-    <label for="toggleRadar">Show Radar:</label>
-    <input type="checkbox" id="toggleRadar" checked><br>
-    <label for="toggleWarnings">Show Warnings:</label>
-    <input type="checkbox" id="toggleWarnings" checked><br>
-    <label for="toggleLightning">Show Lightning:</label>
-    <input type="checkbox" id="toggleLightning" checked><br>
-
-    <br>
-    <!-- Play/Pause Controls -->
-    <button id="playPause" onclick="togglePlayback()" style="padding: 8px 16px; font-size: 16px; cursor: pointer; border-radius: 5px; border: none; background-color: #4CAF50; color: white;">Play</button>
-    <button onclick="prevFrame()" style="padding: 8px 16px; font-size: 16px; cursor: pointer; border-radius: 5px; border: none; background-color: #f44336; color: white;">Previous</button>
-    <button onclick="nextFrame()" style="padding: 8px 16px; font-size: 16px; cursor: pointer; border-radius: 5px; border: none; background-color: #f44336; color: white;">Next</button>
-  </div>
-
-  <!-- Map Container -->
-  <div id="radarMap" style="height: 600px; width: 100%; border-radius: 10px; overflow: hidden;"></div>
-
-  <!-- Leaflet JS & Esri for Layers -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/esri-leaflet"></script>
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>USA Live Radar Viewer</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha512-sA+e2z0MZCulRrTjECVjH1hq+hjFZ9/7Ar8Dtk5l+8T1yeyhOqzTx6YpZy9SxmhO9Rbh4D8ZnLQlRbR+x1bG1g=="
+    crossorigin=""
+  />
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background-color: #cce6ff;
+    }
+    #map {
+      height: 100vh;
+      width: 100vw;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha512-XQoYMqMTK8Lvdlx+g+MQv7m27Q2gXhZlWxTpQbiDxDZJ0YmV0Xf5oBj3zN2bnpXo5NjWb8+T4P/50niwR7N1iw=="
+    crossorigin=""
+  ></script>
   <script>
-    // Example U.S. Radar Sites (you can expand this with more radar sites)
-    const radarSites = {
-      'KHGX': { name: 'Houston/Galveston, TX', coords: [29.471, -95.078] },
-      'KEWX': { name: 'Austin/San Antonio, TX', coords: [29.704, -98.021] },
-      'KAMA': { name: 'Amarillo, TX', coords: [35.233, -101.709] },
-      // Add more radar sites here...
-    };
+    const map = L.map('map').setView([39.8283, -98.5795], 5);
 
-    let currentRadarSite = 'KHGX'; // Default site
-    let radarLayer;
-    let lightningLayer;
-    let warningsLayer;
-
-    // Initialize the map
-    const map = L.map('radarMap').setView(radarSites[currentRadarSite].coords, 7);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
+    // Light blue basemap from Carto
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap contributors & Carto',
+      subdomains: 'abcd',
+      maxZoom: 19
     }).addTo(map);
 
-    // Add radar layers
-    function addRadarLayer(siteCode) {
-      return L.tileLayer(`https://radar.weather.gov/ridge/standard/${siteCode}_L3_N0Q/{z}/{x}/{y}.png`, {
-        opacity: 0.6,
-        attribution: 'Radar: NOAA/NWS',
-        zIndex: 500
-      }).addTo(map);
-    }
+    // RainViewer Radar Integration
+    let radarLayer;
 
-    // Add warning layers (NOAA WMS)
-    function addWarningsLayer() {
-      return L.tileLayer.wms('https://nowcoast.noaa.gov/geoserver/wwa/wms', {
-        layers: 'wwa:WarningAreas',
-        format: 'image/png',
-        transparent: true,
-        attribution: 'Warnings: NOAA/NWS',
-        zIndex: 600
-      }).addTo(map);
-    }
-
-    // Add lightning layer (RainViewer)
-    function addLightningLayer() {
-      return L.tileLayer('https://tilecache.rainviewer.com/v2/lightning/{z}/{x}/{y}.png', {
-        attribution: 'Lightning: RainViewer',
-        transparent: true,
-        opacity: 0.7,
-        zIndex: 700
-      }).addTo(map);
-    }
-
-    // Initialize radar select dropdown
-    const radarSelect = document.getElementById('radarSelect');
-    for (const code in radarSites) {
-      const option = document.createElement('option');
-      option.value = code;
-      option.textContent = `${code} - ${radarSites[code].name}`;
-      radarSelect.appendChild(option);
-    }
-
-    // Update map and layers on radar change
-    radarSelect.addEventListener('change', function () {
-      const code = this.value;
-      currentRadarSite = code;
-      map.setView(radarSites[code].coords, 7);
-      if (radarLayer) map.removeLayer(radarLayer);
-      radarLayer = addRadarLayer(code);
-    });
-
-    // Layer toggle functionality
-    document.getElementById('toggleRadar').addEventListener('change', function() {
-      if (this.checked) {
-        radarLayer.addTo(map);
-      } else {
+    function addRainViewerLayer(frame) {
+      if (radarLayer) {
         map.removeLayer(radarLayer);
       }
-    });
-
-    document.getElementById('toggleWarnings').addEventListener('change', function() {
-      if (this.checked) {
-        warningsLayer = addWarningsLayer();
-      } else {
-        map.removeLayer(warningsLayer);
-      }
-    });
-
-    document.getElementById('toggleLightning').addEventListener('change', function() {
-      if (this.checked) {
-        lightningLayer = addLightningLayer();
-      } else {
-        map.removeLayer(lightningLayer);
-      }
-    });
-
-    // Initialize layers
-    radarLayer = addRadarLayer(currentRadarSite);
-    warningsLayer = addWarningsLayer();
-    lightningLayer = addLightningLayer();
-
-    // Playback controls (for animation)
-    let playbackTimer;
-    let currentFrame = 0;
-    const totalFrames = 5; // For simplicity, we're cycling through 5 frames
-    const frameInterval = 10000; // Update every 10 seconds
-
-    function togglePlayback() {
-      const playPauseButton = document.getElementById('playPause');
-      if (playPauseButton.textContent === 'Play') {
-        playPauseButton.textContent = 'Pause';
-        playbackTimer = setInterval(() => {
-          currentFrame = (currentFrame + 1) % totalFrames;
-          loadFrame(currentFrame);
-        }, frameInterval);
-      } else {
-        playPauseButton.textContent = 'Play';
-        clearInterval(playbackTimer);
-      }
+      radarLayer = L.tileLayer(
+        `https://tilecache.rainviewer.com/v2/radar/${frame.path}/256/{z}/{x}/{y}/2/1_1.png`,
+        {
+          attribution: 'Radar &copy; RainViewer',
+          opacity: 0.75,
+          zIndex: 10
+        }
+      ).addTo(map);
     }
 
-    function loadFrame(frame) {
-      const radarUrl = `https://radar.weather.gov/ridge/standard/${currentRadarSite}_L3_N0Q/${frame}/{z}/{x}/{y}.png`;
-      radarLayer.setUrl(radarUrl); // Update radar tile URL for animation
-    }
-
-    // Navigate frames manually
-    function prevFrame() {
-      currentFrame = (currentFrame - 1 + totalFrames) % totalFrames;
-      loadFrame(currentFrame);
-    }
-
-    function nextFrame() {
-      currentFrame = (currentFrame + 1) % totalFrames;
-      loadFrame(currentFrame);
-    }
-
-    // Search function to filter radar sites
-    document.getElementById('searchInput').addEventListener('input', function() {
-      const query = this.value.toLowerCase();
-      const filteredSites = Object.keys(radarSites).filter(siteCode => radarSites[siteCode].name.toLowerCase().includes(query));
-      
-      radarSelect.innerHTML = '';
-      filteredSites.forEach(code => {
-        const option = document.createElement('option');
-        option.value = code;
-        option.textContent = `${code} - ${radarSites[code].name}`;
-        radarSelect.appendChild(option);
+    fetch('https://api.rainviewer.com/public/weather-maps.json')
+      .then(res => res.json())
+      .then(data => {
+        const frames = data.radar && data.radar.nowcast;
+        if (frames && frames.length > 0) {
+          const latestFrame = frames[frames.length - 1];
+          addRainViewerLayer(latestFrame);
+        } else {
+          alert("No radar frames available from RainViewer.");
+        }
+      })
+      .catch(err => {
+        console.error("RainViewer fetch error:", err);
       });
-    });
 
+    // Weather Alerts from NWS
+    fetch('https://api.weather.gov/alerts/active')
+      .then(response => response.json())
+      .then(data => {
+        L.geoJSON(data, {
+          style: { color: 'red', weight: 2 },
+          onEachFeature: function (feature, layer) {
+            if (feature.properties && feature.properties.headline) {
+              layer.bindPopup(`<strong>${feature.properties.event}</strong><br>${feature.properties.headline}`);
+            }
+          }
+        }).addTo(map);
+      });
   </script>
-
-</section>
+</body>
+</html>
